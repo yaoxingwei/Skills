@@ -1,152 +1,164 @@
 ---
 name: news-digest
-description: "Automated news intelligence digest: collect Trump, Musk, politics, economy, AI models, and semiconductor news via Google News RSS, maintain a markdown wiki knowledge base, and deliver to Telegram."
-version: 1.0.0
+description: "中文新闻情报速递：每日自动收集特朗普、马斯克、政治、经济、AI大模型、芯片半导体新闻，存入wiki知识库并推送到Telegram。"
+version: 2.0.0
 author: yaoxw
 license: MIT
 metadata:
   hermes:
-    tags: [news, digest, trump, musk, ai, semiconductor, wiki, telegram, cron]
+    tags: [news, digest, trump, musk, ai, semiconductor, wiki, telegram, cron, chinese]
     category: research
 ---
 
-# News Digest — 新闻情报速递
+# 新闻情报速递 (News Digest)
 
-Automated bilingual (CN/EN) news collection and delivery system. Pulls latest news from Google News RSS feeds, maintains a structured wiki knowledge base at `~/wiki/`, and delivers daily digests to Telegram.
+中英双语新闻自动收集与推送系统。通过 Google News RSS 抓取最新新闻，存入结构化 Wiki 知识库，并通过 Telegram 定时推送。
 
-## Coverage (6 Topics)
+## 六大主题
 
-| Topic | Keywords | Emoji |
-|-------|----------|-------|
-| Donald Trump | president, policy, election, Iran, assassination | 🔴 |
-| Elon Musk | Tesla, SpaceX, xAI, OpenAI trial, DOGE | 🔵 |
-| US-China Politics | tariffs, trade war, diplomacy, geopolitics | 🟡 |
-| Global Economy | Fed, stock market, crypto, tariffs impact | 🟡 |
-| AI / LLMs | GPT, Claude, Gemini, DeepSeek, open-source AI | 🟢 |
-| Semiconductors | NVIDIA, TSMC, ASML, export controls, GPU | 🟢 |
+| 主题 | 关键词 | 标识 |
+|------|--------|------|
+| 特朗普 | 发言、政策、选举、伊朗战争、法律案件 | 🔴 |
+| 马斯克 | Tesla、SpaceX、xAI、X、OpenAI庭审 | 🔵 |
+| 政治/地缘 | 中美关系、关税、贸易战、外交、国际政要 | 🔶 |
+| 经济/市场 | 美联储、美股、加密货币、关税影响 | 🔶 |
+| AI大模型 | GPT、Claude、Gemini、DeepSeek、开源模型、AGI | 🟢 |
+| 芯片半导体 | 英伟达、台积电、ASML、出口管制、GPU | 🟢 |
 
-## Architecture
+## X/Twitter 消息源（需 xurl CLI）
+
+安装 xurl 后可抓取以下账号的推文：
+
+### 政治与政策
+- @realDonaldTrump / @POTUS — 特朗普
+- @elonmusk — 马斯克
+- @WhiteHouse — 白宫
+- @StateDept — 美国国务院
+- @SecDef — 美国国防部
+
+### 经济与金融
+- @federalreserve — 美联储
+- @ecb — 欧洲央行
+- @BlackRock — 贝莱德
+- @goldmansachs — 高盛
+- @SquawkCNBC — CNBC快讯
+- @WSJ — 华尔街日报
+- @FT — 金融时报
+- @business — 彭博社
+
+### AI/科技领袖
+- @sama — Sam Altman (OpenAI)
+- @gdb — Greg Brockman (OpenAI)
+- @kaboroevich — Ilya Sutskever (SSI)
+- @ylecun — Yann LeCun (Meta AI)
+- @AndrewYNg — 吴恩达
+- @karpathy — Andrej Karpathy
+- @DrJimFan — Jim Fan (NVIDIA)
+- @JeffDean — Jeff Dean (Google AI)
+- @demishassabis — Demis Hassabis (Google DeepMind)
+- @DarioAmodei — Dario Amodei (Anthropic)
+
+### 芯片/半导体
+- @nvidia — NVIDIA
+- @AMD — AMD
+- @intel — Intel
+- @TSMC — 台积电
+
+### 中文科技圈
+- @tualatrix — 图拉鼎
+- @haoel — 左耳朵耗子
+- @dotey — 宝玉
+- @geekbb — 小众软件
+- @yihong0618 — yihong
+
+## Wiki 结构
 
 ```
-~/wiki/                          # Knowledge base (Karpathy-style LLM Wiki)
-├── SCHEMA.md                    # Conventions and tag taxonomy
-├── index.md                     # Content catalog
-├── log.md                       # Chronological action log
-├── raw/articles/                # Immutable source feeds
-├── entities/                    # Entity pages (Trump, Musk, NVIDIA, etc.)
-├── concepts/                    # Topic/concept pages
-├── digests/                     # Daily digest pages (YYYY-MM-DD-digest.md)
-├── comparisons/                 # Side-by-side analyses
-└── queries/                     # Saved query results
-
-~/.hermes/skills/research/news-digest/   # This skill
+~/wiki/
+├── SCHEMA.md
+├── index.md
+├── log.md
+├── raw/articles/       # 原始新闻源（不可变）
+├── entities/           # 人物/组织页面
+├── digests/            # 每日摘要 YYYY-MM-DD-digest.md
+├── concepts/           # 主题/概念
+└── comparisons/        # 对比分析
 ```
 
-## Cron Setup
+## Cron 设置
 
-Schedule: `0 9,19 * * *` (daily at 09:00 and 19:00 Beijing time)
+```
+schedule: 0 9,19 * * * (北京时间每天9:00和19:00)
+deliver: telegram:chong
+skills: llm-wiki, news-digest
+```
+
+## 工作流程
+
+### 1. 抓取原始新闻
 
 ```bash
-hermes cron create "0 9,19 * * *" \
-  --name "News Digest — Trump, Musk, AI, Chips" \
-  --skill llm-wiki \
-  --skill news-digest \
-  --deliver telegram:chong
+# Google News RSS（中文+英文）
+curl -s "https://news.google.com/rss/search?q=特朗普+总统&hl=zh-CN&gl=CN&ceid=CN:zh"
+curl -s "https://news.google.com/rss/search?q=Elon+Musk+马斯克&hl=en-US&gl=US&ceid=US:en"
+curl -s "https://news.google.com/rss/search?q=NVIDIA+AI+芯片+半导体+英伟达&hl=zh-CN&gl=CN&ceid=CN:zh"
+curl -s "https://news.google.com/rss/search?q=AI+大模型+DeepSeek+GPT+Claude&hl=zh-CN&gl=CN&ceid=CN:zh"
+curl -s "https://news.google.com/rss/search?q=中美+关税+贸易战+经济&hl=zh-CN&gl=CN&ceid=CN:zh"
 ```
 
-## Collection Workflow
+### 2. 存入 Wiki
 
-### 1. Fetch Raw Feeds
+- 原始数据 → `~/wiki/raw/articles/<topic>-YYYY-MM-DD.md`
+- 实体页 → `~/wiki/entities/`（出现2次以上的实体才建页）
+- 每日摘要 → `~/wiki/digests/YYYY-MM-DD-digest.md`
 
-Use Google News RSS with curl:
+### 3. 推送到 Telegram
 
-```bash
-curl -s "https://news.google.com/rss/search?q=Trump+president&hl=en-US&gl=US&ceid=US:en"
-curl -s "https://news.google.com/rss/search?q=Elon+Musk&hl=en-US&gl=US&ceid=US:en"
-curl -s "https://news.google.com/rss/search?q=Nvidia+AI+chips+semiconductor&hl=en-US&gl=US&ceid=US:en"
-curl -s "https://news.google.com/rss/search?q=China+trade+tariffs+economy&hl=en-US&gl=US&ceid=US:en"
-```
-
-Parse with Python xml.etree.ElementTree to extract: title, pubDate, source, link.
-
-### 2. Save Raw Sources
-
-Save to `~/wiki/raw/articles/<topic>-YYYY-MM-DD.md` with frontmatter:
-```yaml
----
-source_url: <rss_url>
-ingested: YYYY-MM-DD
----
-```
-
-### 3. Update Entity Pages
-
-For each entity appearing in 2+ stories, create or update its page:
-- `~/wiki/entities/donald-trump.md`
-- `~/wiki/entities/elon-musk.md`
-- `~/wiki/entities/nvidia.md`
-- etc.
-
-Each entity page has: overview, key facts, recent events (with dates), relationships to other entities via `[[wikilinks]]`.
-
-### 4. Create Daily Digest
-
-Write `~/wiki/digests/YYYY-MM-DD-digest.md` with:
-- Top 5-8 stories per category
-- Headline, source, date for each
-- Key themes / cross-cutting storylines
-
-### 5. Update Navigation
-
-- Add/update entries in `~/wiki/index.md`
-- Append to `~/wiki/log.md`: `## [YYYY-MM-DD] ingest | topic batch`
-
-### 6. Deliver to Telegram
-
-Send a concise summary via `send_message` to `telegram:chong`:
+**必须使用中文**，格式如下：
 
 ```
-📰 新闻情报速递 | YYYY-MM-DD
+📰 新闻速递 | 2026年4月28日
 
-🔴 TRUMP
-- key point 1
-- key point 2
+━━━━━━━━━━━━━━━━━━
 
-🔵 MUSK
-- key point 1
-- key point 2
+🔴 特朗普
+• 摘要一（来源，日期）
+• 摘要二（来源，日期）
 
-🟡 政治/经济
-- key point 1
+🔵 马斯克
+• 摘要一（来源，日期）
+• 摘要二（来源，日期）
 
-🟢 AI/芯片
-- key point 1
-- key point 2
+🔶 政经动态
+• 摘要一（来源，日期）
+• 摘要二（来源，日期）
 
+🟢 AI / 芯片
+• 摘要一（来源，日期）
+• 摘要二（来源，日期）
+
+━━━━━━━━━━━━━━━━━━
 Wiki: ~/wiki/
 ```
 
-## Tag Taxonomy
+## 语言规则（CRITICAL）
 
-- **人物:** trump, musk, xi-jinping, biden, powell, huang-renxun, sam-altman
-- **组织:** tesla, spacex, openai, google, meta, nvidia, tsmc, asml, xai, anthropic, microsoft
-- **主题:** tariff, trade-war, election, diplomacy, fed, crypto, iran-war, assassination
-- **技术:** llm, agi, gpu, semiconductor, export-control, open-source-ai, deepseek, reasoning, tpu
-- **元数据:** comparison, timeline, prediction, controversy
+- **Telegram 推送必须全中文**，包括标题、正文、来源翻译
+- Wiki 页面：中文为主，关键术语保留英文原名
+- 日志、索引使用中文
 
-## Pitfalls
+## 注意事项
 
-- Google News RSS `after:` filter is unreliable — fetch full feed and filter by pubDate in Python
-- Telegram delivery may time out on unstable networks — retry once after gateway restart
-- WSL environment needs `systemd=true` in `/etc/wsl.conf` for gateway service to survive terminal close
-- Always follow SCHEMA.md conventions when creating/updating wiki pages
-- Frontmatter `contested: true` for articles with conflicting claims
-- Don't create entity pages for single-mention topics (threshold: 2+ sources)
+- Google News RSS 的 `after:` 参数不可靠，拉取完整 feed 后在 Python 中按 pubDate 过滤
+- Telegram 推送在网络不稳定时可能超时，可重试一次
+- WSL 环境确保 `systemd=true` 在 `/etc/wsl.conf` 中
+- 人物/组织出现2次以上才创建实体页
+- 矛盾信息标记 `contested: true`
 
-## Dependencies
+## 依赖
 
-- curl (system)
-- Python 3 with xml.etree.ElementTree (stdlib)
-- Hermes cronjob tool
-- Hermes send_message tool (Telegram platform configured)
-- `~/wiki/SCHEMA.md` must exist (created during wiki initialization)
+- curl（系统自带）
+- Python 3 xml.etree（标准库）
+- Hermes cronjob 工具
+- Hermes send_message（Telegram 平台已配置）
+- 可选：xurl CLI（抓取 X/Twitter 推文）

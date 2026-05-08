@@ -1,12 +1,12 @@
 ---
 name: news-digest
-description: "中文新闻情报速递：每日自动收集特朗普、马斯克、政治、经济、AI大模型、芯片半导体新闻+自选股分析，存入wiki知识库并推送到Telegram。"
-version: 2.2.0
+description: "中文新闻情报速递：每日自动收集特朗普、马斯克、政治、经济、AI大模型、芯片半导体新闻+自选股分析+GitHub趋势榜，存入wiki知识库并推送到Telegram。"
+version: 2.3.0
 author: yaoxw
 license: MIT
 metadata:
   hermes:
-    tags: [news, digest, trump, musk, ai, semiconductor, wiki, telegram, cron, chinese, portfolio]
+    tags: [news, digest, trump, musk, ai, semiconductor, wiki, telegram, cron, chinese, portfolio, github-trending]
     category: research
 ---
 
@@ -26,6 +26,66 @@ metadata:
 | 经济/市场 | 美联储、美股、加密货币、关税影响 | 🔶 |
 | AI大模型 | GPT、Claude、Gemini、DeepSeek、开源模型、AGI | 🟢 |
 | 芯片半导体 | 英伟达、台积电、ASML、出口管制、GPU | 🟢 |
+
+### GitHub Trending（第八主题）
+
+每天和每周排名，通过 HTML 抓取 `https://github.com/trending` 和 `https://github.com/trending?since=weekly`。
+
+**抓取方法（curl + 正则解析 HTML）：**
+
+```bash
+# 日榜
+curl -sL 'https://github.com/trending' -o /tmp/trending_daily.html
+
+# 周榜
+curl -sL 'https://github.com/trending?since=weekly' -o /tmp/trending_weekly.html
+```
+
+**解析逻辑：**
+```python
+import re, html
+
+with open(html_file) as f:
+    content = f.read()
+
+# 按 <article class="Box-row"> 分割
+articles = re.split(r'<article[^>]*class="[^"]*Box-row[^"]*"[^>]*>', content)
+
+for art in articles[1:]:
+    # Repo 路径
+    repo_m = re.search(r'href="(/(?!trending|sponsors|apps|login)[^/"]+/[^/"]+)"', art)
+    # 描述
+    desc_m = re.search(r'<p[^>]*class="[^"]*col-9[^"]*"[^>]*>\s*(.*?)\s*</p>', art, re.DOTALL)
+    # Star 数（日榜: "stars today", 周榜: "stars this week"）
+    stars_m = re.search(r'(\d[\d,]*)\s*stars?\s+(today|this week)', art, re.IGNORECASE)
+    # 语言
+    lang_m = re.search(r'itemprop="programmingLanguage"[^>]*>\s*([^<\s]+)', art)
+
+    # 过滤 sponsors/ 路径
+    if repo_m and '/sponsors/' not in repo_m.group(1):
+        ...
+```
+
+**关键坑：**
+- GitHub Trending 是 React 渲染页面，**不能用 `browser_navigate`**（太重），直接 `curl` + `re` 解析 HTML 即可
+- `article.Box-row` 是稳定的 CSS 类名，包含每个 trending repo
+- 过滤掉 `href` 中 `/sponsors/`、`/trending/`、`/apps/` 等非 repo 路径
+- Star 数在日榜是 `stars today`，周榜是 `stars this week`，正则需区分
+- 每次抓取会拿到 12-25 个 repo
+
+**存入 Wiki：**
+- 原始 HTML → `~/wiki/raw/trending/trending-daily-YYYY-MM-DD.md`（保存解析后的摘要）
+- 每日摘要追加 `## 🟣 GitHub Trending` 板块，列出 Top 5-10 项目
+
+**Telegram 推送格式：**
+```
+🟣 GitHub Trending | 日榜 Top 5
+⭐3,827 [Rust] Hmbown/DeepSeek-TUI — Coding agent for DeepSeek in terminal
+⭐3,662 [Python] anthropics/financial-services
+⭐1,794 [Shell] addyosmani/agent-skills — Engineering skills for AI coding agents
+⭐1,028 [JavaScript] decolua/9router — Unlimited FREE AI coding
+⭐820 [TypeScript] Augani/openreel-video — Open source CapCut alternative
+```
 
 ### 自选股管理（第七主题）
 
@@ -143,7 +203,9 @@ sources: [raw/articles/...]
 ├── index.md
 ├── log.md
 ├── watchlist.md        # 自选股列表
-├── raw/articles/       # 原始新闻源（不可变）
+├── raw/
+│   ├── articles/       # 原始新闻源（不可变）
+│   └── trending/       # GitHub Trending 每日/每周摘记
 ├── entities/           # 人物/组织页面 + 持仓分析页面
 ├── digests/            # 每日摘要 YYYY-MM-DD-digest.md
 ├── concepts/           # 主题/概念
@@ -161,7 +223,8 @@ skills: llm-wiki, news-digest
 
 Cron 提示：每次运行时：(1) 收集六大宏观主题新闻；(2) 读取 ~/wiki/watchlist.md 获取自选股列表；
 (3) 逐只抓取自选股新闻 → 更新 Entity 页面 → 追加 Digest 持仓分析板块；
-(4) Telegram 推送中加入持仓买卖建议摘要。
+(4) 抓取 GitHub Trending 日榜+周榜 → 追加 Digest；
+(5) Telegram 推送中加入持仓买卖建议摘要 + GitHub Trending Top 5。
 ```
 
 ## 工作流程

@@ -1,7 +1,7 @@
 ---
 name: news-digest
 description: "中文新闻情报速递：每日自动收集特朗普、马斯克、政治、经济、AI大模型、芯片半导体新闻+自选股分析+GitHub趋势榜，存入wiki知识库并推送到Telegram。"
-version: 2.3.0
+version: 2.4.0
 author: yaoxw
 license: MIT
 metadata:
@@ -29,62 +29,65 @@ metadata:
 
 ### GitHub Trending（第八主题）
 
-每天和每周排名，通过 HTML 抓取 `https://github.com/trending` 和 `https://github.com/trending?since=weekly`。
+每天和每周排名，通过 GitHub Search API 获取（GitHub Trending 页面是 JS 渲染，curl 不可行）。
 
-**抓取方法（curl + 正则解析 HTML）：**
+**抓取方法（curl + GitHub Search API）：**
+
+⚠️ **关键坑：** GitHub Trending 页面 (`github.com/trending`) 是 React 渲染，curl 只能拿到 `<head>` 没有 body 内容。**必须使用 GitHub Search API**。
 
 ```bash
-# 日榜
-curl -sL 'https://github.com/trending' -o /tmp/trending_daily.html
+# 日榜：近3天创建、stars>50、按stars排序
+curl -s -H "User-Agent: Mozilla/5.0" -H "Accept: application/vnd.github+json" \
+  "https://api.github.com/search/repositories?q=created:>YYYY-MM-DD+stars:>50&sort=stars&order=desc&per_page=10"
 
-# 周榜
-curl -sL 'https://github.com/trending?since=weekly' -o /tmp/trending_weekly.html
+# 周榜：近14天创建、stars>200、按stars排序
+curl -s -H "User-Agent: Mozilla/5.0" -H "Accept: application/vnd.github+json" \
+  "https://api.github.com/search/repositories?q=created:>YYYY-MM-DD+stars:>200&sort=stars&order=desc&per_page=10"
 ```
 
 **解析逻辑：**
 ```python
-import re, html
+import json, subprocess
+from datetime import datetime, timedelta
 
-with open(html_file) as f:
-    content = f.read()
+today = datetime.utcnow()
+d3 = (today - timedelta(days=3)).strftime('%Y-%m-%d')
+w14 = (today - timedelta(days=14)).strftime('%Y-%m-%d')
 
-# 按 <article class="Box-row"> 分割
-articles = re.split(r'<article[^>]*class="[^"]*Box-row[^"]*"[^>]*>', content)
+daily_url = f"https://api.github.com/search/repositories?q=created:>{d3}+stars:>50&sort=stars&order=desc&per_page=10"
+weekly_url = f"https://api.github.com/search/repositories?q=created:>{w14}+stars:>200&sort=stars&order=desc&per_page=10"
 
-for art in articles[1:]:
-    # Repo 路径
-    repo_m = re.search(r'href="(/(?!trending|sponsors|apps|login)[^/"]+/[^/"]+)"', art)
-    # 描述
-    desc_m = re.search(r'<p[^>]*class="[^"]*col-9[^"]*"[^>]*>\s*(.*?)\s*</p>', art, re.DOTALL)
-    # Star 数（日榜: "stars today", 周榜: "stars this week"）
-    stars_m = re.search(r'(\d[\d,]*)\s*stars?\s+(today|this week)', art, re.IGNORECASE)
-    # 语言
-    lang_m = re.search(r'itemprop="programmingLanguage"[^>]*>\s*([^<\s]+)', art)
+# 需要 User-Agent header，否则 API 可能返回空
+headers = "-H 'User-Agent: Mozilla/5.0' -H 'Accept: application/vnd.github+json'"
+daily_data = json.loads(subprocess.check_output(f"curl -s {headers} '{daily_url}'", shell=True))
+weekly_data = json.loads(subprocess.check_output(f"curl -s {headers} '{weekly_url}'", shell=True))
 
-    # 过滤 sponsors/ 路径
-    if repo_m and '/sponsors/' not in repo_m.group(1):
-        ...
+for repo in daily_data['items'][:10]:
+    print(f"{repo['full_name']} ⭐{repo['stargazers_count']} | {repo.get('language','N/A')}")
+    print(f"  {repo.get('description','')}")
 ```
 
-**关键坑：**
-- GitHub Trending 是 React 渲染页面，**不能用 `browser_navigate`**（太重），直接 `curl` + `re` 解析 HTML 即可
-- `article.Box-row` 是稳定的 CSS 类名，包含每个 trending repo
-- 过滤掉 `href` 中 `/sponsors/`、`/trending/`、`/apps/` 等非 repo 路径
-- Star 数在日榜是 `stars today`，周榜是 `stars this week`，正则需区分
-- 每次抓取会拿到 12-25 个 repo
+**关键参数说明：**
+- `created:>DATE` — 只取创建时间晚于指定日期的仓库（模拟 "trending new"）
+- `stars:>N` — 最低星数阈值，过滤噪音（日榜>50，周榜>200）
+- `sort=stars` — 按总星数排序（最接近 trending 的 star velocity 排序）
+- `per_page=10` — 取前 10
+- **必须有 `User-Agent` header**，否则 API 可能返回空或被限流
+
+**注意：** GitHub Search API 无认证限速 10 req/min。日榜+周榜各一次请求 = 2 req/run。如频繁调用考虑添加 `Authorization: Bearer <token>` header。
 
 **存入 Wiki：**
-- 原始 HTML → `~/wiki/raw/trending/trending-daily-YYYY-MM-DD.md`（保存解析后的摘要）
-- 每日摘要追加 `## 🟣 GitHub Trending` 板块，列出 Top 5-10 项目
+- 解析后摘要 → `~/wiki/raw/trending/trending-daily-YYYY-MM-DD.md`
+- 解析后摘要 → `~/wiki/raw/trending/trending-weekly-YYYY-MM-DD.md`
+- 每日摘要追加 `## 🟣 GitHub Trending` 板块，日榜+周榜各 Top 10
 
 **Telegram 推送格式：**
 ```
 🟣 GitHub Trending | 日榜 Top 5
-⭐3,827 [Rust] Hmbown/DeepSeek-TUI — Coding agent for DeepSeek in terminal
-⭐3,662 [Python] anthropics/financial-services
-⭐1,794 [Shell] addyosmani/agent-skills — Engineering skills for AI coding agents
-⭐1,028 [JavaScript] decolua/9router — Unlimited FREE AI coding
-⭐820 [TypeScript] Augani/openreel-video — Open source CapCut alternative
+1. antirez/ds4 ⭐1,871 [C] DeepSeek 4 Flash Metal本地推理 — Redis之父出品
+2. aattaran/deepclaude ⭐1,625 [JS] Claude Code Agent + DeepSeek V4后端
+3. yaojingang/yao-open-prompts ⭐1,334 [Python] 中文AI提示词库
+...
 ```
 
 ### 自选股管理（第七主题）
